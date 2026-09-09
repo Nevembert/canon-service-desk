@@ -37,11 +37,12 @@ namespace CanonServiceDesk {
             if(!OpenPrinterW(printer,out handle,IntPtr.Zero)) throw new Win32Exception(Marshal.GetLastWin32Error());
             return handle;
         }
-        static QueueReport Read(IntPtr handle,string printer) {
+        static QueueReport Read(IntPtr handle,string printer,Journal log) {
             var report=new QueueReport { Printer=printer };
             uint needed,count;
             bool ok=EnumJobsW(handle,0,1000,1,IntPtr.Zero,0,out needed,out count);
             int error=ok ? 0:Marshal.GetLastWin32Error();
+            log.Add("INFO","queue.enum.size","Размер ответа EnumJobsW",new { Success=ok,Win32Error=error,Needed=needed,Returned=count });
             if(!ok && error!=122) throw new Win32Exception(error);
             if(needed==0) { report.Complete=true;return report; }
             for(int attempt=0;attempt<3;attempt++) {
@@ -50,10 +51,12 @@ namespace CanonServiceDesk {
                 try {
                     if(!EnumJobsW(handle,0,1000,1,buffer,capacity,out needed,out count)) {
                         error=Marshal.GetLastWin32Error();
+                        log.Add("ERROR","queue.enum.read",Rules.Win32(error),new { Win32Error=error,Needed=needed,Capacity=capacity });
                         if(error==122 && attempt<2) continue;
                         throw new Win32Exception(error);
                     }
                     int stride=Marshal.SizeOf(typeof(JobInfo1));
+                    log.Add("INFO","queue.enum.read","Ответ EnumJobsW",new { Count=count,Capacity=capacity,StructureSize=stride });
                     if((long)stride*count>capacity) throw new InvalidOperationException("Windows вернула некорректный размер списка заданий.");
                     for(uint i=0;i<count;i++) {
                         var j=(JobInfo1)Marshal.PtrToStructure(IntPtr.Add(buffer,checked((int)i*stride)),typeof(JobInfo1));
@@ -79,14 +82,14 @@ namespace CanonServiceDesk {
             IntPtr handle=Open(request.Printer);
             try {
                 if(command!=0) {
-                    var current=Read(handle,request.Printer);
+                    var current=Read(handle,request.Printer,log);
                     var actual=current.Jobs.FirstOrDefault(x=>request.Job!=null && x.Id==request.Job.Id);
                     if(!SameJob(request.Job,actual)) throw new InvalidOperationException("Задание исчезло или изменилось. Обновите очередь и выберите его заново.");
                     log.Add("INFO","queue.request",request.Operation,new { request.Printer,Job=actual,Command=command });
                     if(!SetJobW(handle,actual.Id,0,IntPtr.Zero,command)) throw new Win32Exception(Marshal.GetLastWin32Error());
                     log.Add("INFO","queue.accepted","Windows приняла команду. Уже переданные принтеру страницы могут допечататься.");
                 }
-                var report=Read(handle,request.Printer);log.Add("INFO","queue.report","Состояние очереди",report);return report;
+                var report=Read(handle,request.Printer,log);log.Add("INFO","queue.report","Состояние очереди",report);return report;
             } finally { ClosePrinter(handle); }
         }
     }

@@ -18,6 +18,7 @@ class QueueIntegration {
     [DllImport("winspool.drv",SetLastError=true)] static extern bool EndDocPrinter(IntPtr printer);
     [DllImport("winspool.drv",SetLastError=true)] static extern bool StartPagePrinter(IntPtr printer);
     [DllImport("winspool.drv",SetLastError=true)] static extern bool EndPagePrinter(IntPtr printer);
+    [DllImport("winspool.drv",CharSet=CharSet.Unicode,SetLastError=true)] static extern bool GetPrinterW(IntPtr printer,uint level,out uint status,uint size,out uint needed);
     static void Check(bool value,string name) { if(!value) throw new Exception(name+"; Win32="+Marshal.GetLastWin32Error());Console.WriteLine("PASS native: "+name); }
     static int Main(string[] args) {
         try {
@@ -25,6 +26,8 @@ class QueueIntegration {
             Check(OpenPrinterW(Printer,out handle,ref defaults),"open isolated queue");
             try {
                 Check(SetPrinterW(handle,0,IntPtr.Zero,1),"pause isolated queue before adding data");
+                uint state,needed;Check(GetPrinterW(handle,6,out state,4,out needed),"read queue state");
+                Console.WriteLine("Queue status flags="+state);Check((state & 1)!=0,"queue is actually paused");
                 var doc=new Doc { Name="Проверка UTF-8 — CI only",Datatype="RAW" };
                 uint id=StartDocPrinterW(handle,1,ref doc);Check(id!=0,"create temporary spool job");
                 Check(StartPagePrinter(handle),"start temporary page");
@@ -48,6 +51,6 @@ class QueueIntegration {
                 Console.WriteLine("Windows spooler integration passed; no physical printer used.");
             } finally { ClosePrinter(handle); }
             return 0;
-        } catch(Exception e) { Console.Error.WriteLine(e);return 1; }
+        } catch(Exception e) { Console.Error.WriteLine(e);if(args.Length>0) { string path=System.IO.Path.Combine(args[0],"journal.txt");if(System.IO.File.Exists(path)) Console.Error.WriteLine(System.IO.File.ReadAllText(path)); }return 1; }
     }
 }

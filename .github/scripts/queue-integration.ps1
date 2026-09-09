@@ -14,5 +14,6 @@ try {
     & $test (Join-Path $env:RUNNER_TEMP 'CanonQueueIntegration')
     if ($LASTEXITCODE -ne 0) { throw 'Queue integration failed' }
 } finally {
+    Get-PrintJob -PrinterName $queue -ErrorAction SilentlyContinue | Format-List ID,DocumentName,JobStatus
     if (Get-Printer -Name $queue -ErrorAction SilentlyContinue) { Remove-Printer -Name $queue }
 }

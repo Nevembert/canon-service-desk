@@ -118,6 +118,7 @@ namespace CanonServiceDesk {
         }
         void StartProcedure() {
             if(busy) return;var p=procedures.SelectedItem as ServiceProcedure;if(p==null) return;
+            if(!demo && string.IsNullOrWhiteSpace(deviceKey.Text)) { MessageBox.Show(this,"Сначала укажите устройство на вкладке «Счётчики», чтобы сохранить результат процедуры.");return; }
             using(var wizard=new ProcedureForm(p,demo)) {
                 wizard.ShowDialog(this);
                 if(demo || !wizard.Started) return;
