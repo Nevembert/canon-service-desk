@@ -7,6 +7,7 @@ using System.Text;
 using System.Web.Script.Serialization;
 
 namespace CanonServiceDesk {
+    public static class AppInfo { public const string Version="0.2.0"; }
     public static class Json {
         public static string Encode(object value) { return new JavaScriptSerializer { MaxJsonLength = 16000000 }.Serialize(value); }
         public static T Decode<T>(string value) { return new JavaScriptSerializer { MaxJsonLength = 16000000 }.Deserialize<T>(value); }
@@ -38,7 +39,7 @@ namespace CanonServiceDesk {
         public int Win32Error;
     }
     public sealed class Snapshot {
-        public string Version = "0.1.0", CreatedUtc = DateTime.UtcNow.ToString("o"), OS = Environment.OSVersion.ToString();
+        public string Version = AppInfo.Version, CreatedUtc = DateTime.UtcNow.ToString("o"), OS = Environment.OSVersion.ToString();
         public bool Completed, Demo;
         public List<Device> Devices = new List<Device>();
         public List<UsbResult> Usb = new List<UsbResult>();

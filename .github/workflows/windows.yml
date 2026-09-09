@@ -32,18 +32,25 @@ jobs:
           $app = Start-Process -FilePath '.\CanonServiceDesk.exe' -ArgumentList @('--demo', '--screenshot', ('"' + $preview + '"')) -PassThru
           if (-not $app.WaitForExit(20000)) { $app.Kill(); throw 'Demo UI timed out' }
           if ($app.ExitCode -ne 0 -or -not (Test-Path $preview)) { throw 'Demo UI did not produce a preview' }
-      - name: Verify the published Windows download
+      - name: Package the Windows application
+        shell: powershell
+        run: ./.github/scripts/package.ps1
+      - name: Verify packaged application and all service tabs
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
-          Expand-Archive -LiteralPath '.\downloads\CanonServiceDesk-v0.1.0-Windows.zip' -DestinationPath '.\download-check'
+          Expand-Archive -LiteralPath '.\dist\CanonServiceDesk-v0.2.0-Windows.zip' -DestinationPath '.\download-check'
           $exe = Get-ChildItem '.\download-check' -Recurse -Filter 'CanonServiceDesk.exe' | Select-Object -First 1
           if (-not $exe) { throw 'Download does not contain the application' }
-          $preview = Join-Path $pwd 'download-demo.png'
-          $app = Start-Process -FilePath $exe.FullName -ArgumentList @('--demo', '--screenshot', ('"' + $preview + '"')) -PassThru
+          $preview = Join-Path $pwd 'previews'
+          $app = Start-Process -FilePath $exe.FullName -ArgumentList @('--demo', '--screenshots', ('"' + $preview + '"')) -PassThru
           if (-not $app.WaitForExit(20000)) { $app.Kill(); throw 'Published application timed out' }
-          if ($app.ExitCode -ne 0 -or -not (Test-Path $preview)) { throw 'Published application did not produce a preview' }
+          if ($app.ExitCode -ne 0 -or (Get-ChildItem $preview -Filter '*.png').Count -ne 9) { throw 'Packaged application did not produce all previews' }
+      - name: Real Windows spooler on an isolated test queue
+        shell: powershell
+        run: ./.github/scripts/queue-integration.ps1
       - name: Save build and demo preview
+        if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: CanonServiceDesk-windows-build
@@ -51,5 +58,7 @@ jobs:
             CanonServiceDesk.exe
             CanonServiceDesk.exe.config
             ui-demo.png
-            download-demo.png
+            previews/*.png
+            dist/*.zip
+            dist/SHA256SUMS.txt
           if-no-files-found: error

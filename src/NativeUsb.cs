@@ -25,6 +25,7 @@ namespace CanonServiceDesk {
         [DllImport("cfgmgr32.dll")] static extern uint CM_Get_DevNode_Status(out uint status,out uint problem,uint instance,uint flags);
         [DllImport("kernel32.dll",CharSet=CharSet.Unicode,SetLastError=true)] static extern SafeFileHandle CreateFileW(string name,uint access,uint share,IntPtr security,uint disposition,uint flags,IntPtr template);
         [DllImport("kernel32.dll",SetLastError=true)] static extern bool DeviceIoControl(SafeFileHandle handle,uint control,IntPtr input,uint inputSize,byte[] output,uint outputSize,out uint returned,IntPtr overlapped);
+        [DllImport("kernel32.dll",SetLastError=true)] static extern bool WriteFile(SafeFileHandle handle,byte[] data,uint count,out uint written,IntPtr overlapped);
         static DevInfo NewDev() { return new DevInfo { Size=(uint)Marshal.SizeOf(typeof(DevInfo)) }; }
         static string Property(IntPtr set,ref DevInfo d,uint n) {
             uint type,needed; byte[] b=new byte[8192];
@@ -41,6 +42,27 @@ namespace CanonServiceDesk {
             return x;
         }
         static bool IsCanon(Device d) { return d.HardwareIds.IndexOf("VID_04A9",StringComparison.OrdinalIgnoreCase)>=0 || d.Manufacturer.IndexOf("Canon",StringComparison.OrdinalIgnoreCase)>=0 || d.Name.IndexOf("Canon",StringComparison.OrdinalIgnoreCase)>=0; }
+        public static void SendBjl(ServiceRequest request,Journal log) {
+            byte[] data=BjlCommands.Build(request.Operation);
+            if(!BjlCommands.Advertised(request.DeviceId)) throw new InvalidOperationException("Принтер не заявил поддержку BJL в идентификаторе. Команда не отправлена.");
+            if(!request.UsbPath.StartsWith(@"\\?\usb#",StringComparison.OrdinalIgnoreCase) || request.UsbPath.IndexOf("vid_04a9",StringComparison.OrdinalIgnoreCase)<0 || !request.UsbPath.EndsWith(UsbPrintGuid.ToString("B"),StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException("Требуется путь USBPRINT Canon из свежей диагностики.");
+            // Exclusive access: do not interleave BJL with another process's print stream.
+            using(var h=CreateFileW(request.UsbPath,0x40000000,0,IntPtr.Zero,3,0,IntPtr.Zero)) {
+                if(h.IsInvalid) throw new Win32Exception(Marshal.GetLastWin32Error());
+                var buffer=new byte[4094];uint returned;
+                if(!DeviceIoControl(h,0x220034,IntPtr.Zero,0,buffer,(uint)buffer.Length,out returned,IntPtr.Zero)) throw new Win32Exception(Marshal.GetLastWin32Error());
+                string current=DeviceIdParser.Decode(buffer.Take((int)Math.Min(returned,(uint)buffer.Length)).ToArray());
+                if(!current.Equals(request.DeviceId,StringComparison.Ordinal) || !BjlCommands.Advertised(current)) throw new InvalidOperationException("Идентификатор USB изменился. Обновите диагностику; команда не отправлена.");
+                log.Add("INFO","bjl.write.request","Экспериментальная команда BJL",new { request.Operation,request.UsbPath,Hex=DeviceIdParser.Hex(data),Length=data.Length });
+                uint written;var timer=Stopwatch.StartNew();
+                bool ok=WriteFile(h,data,(uint)data.Length,out written,IntPtr.Zero);
+                int error=ok ? 0:Marshal.GetLastWin32Error();
+                log.Add(ok ? "INFO":"ERROR","bjl.write.response","Результат записи Windows",new { Success=ok,Win32Error=error,Written=written,Expected=data.Length,ElapsedMs=timer.ElapsedMilliseconds });
+                if(!ok) throw new Win32Exception(error);
+                if(written!=data.Length) throw new InvalidOperationException("Команда передана частично. Автоматического повтора нет; проверьте состояние принтера.");
+                log.Add("INFO","bjl.submitted","Байты переданы принтеру. Выполнение операции проверьте по панели и распечатке; аппаратное подтверждение не получено.");
+            }
+        }
         public static Snapshot Scan(Journal log) {
             var s=new Snapshot(); log.Save(s);
             log.Add("INFO","scan.start","Поиск подключённых устройств Canon; запросы записи отсутствуют.");
