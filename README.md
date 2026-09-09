@@ -58,7 +58,7 @@ python -m unittest discover -s tests -p "test_*.py" -v
 node tests/test_observer.js
 ```
 
-Проведённые проверки и ограничения: [VALIDATION.txt](VALIDATION.txt). Workflow `Windows build and test` предназначен для сборки, тестов и запуска интерфейса с демонстрационными данными на GitHub Actions; он не проверяет физический принтер. Состояние конкретного запуска смотрите на вкладке Actions.
+Проведённые проверки и ограничения: [VALIDATION.txt](VALIDATION.txt). [Проверка на Windows от 9 сентября 2026 года](https://github.com/Nevembert/canon-service-desk/actions/runs/34333995673) успешно собрала исходники, выполнила тесты и запустила демо как новой сборки, так и EXE из опубликованного ZIP. Workflow `Windows build and test` повторяет эти проверки на GitHub Actions; он не проверяет физический принтер. Актуальные результаты смотрите на вкладке Actions.
 
 ## Участие
 
