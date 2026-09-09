@@ -8,7 +8,7 @@ if not exist "%CANON_CSC%" (
   pause
   exit /b 1
 )
-"%CANON_CSC%" /nologo /codepage:65001 /target:winexe /platform:anycpu /optimize+ /out:CanonServiceDesk.exe /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.Web.Extensions.dll /r:System.IO.Compression.dll /r:System.IO.Compression.FileSystem.dll src\Core.cs src\NativeUsb.cs src\Program.cs
+"%CANON_CSC%" /nologo /codepage:65001 /target:winexe /platform:anycpu /optimize+ /out:CanonServiceDesk.exe /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.Web.Extensions.dll /r:System.IO.Compression.dll /r:System.IO.Compression.FileSystem.dll src\*.cs
 if errorlevel 1 (
   pause
   exit /b 1

@@ -9,13 +9,17 @@ $coreSource = Join-Path $repoRoot 'src\Core.cs'
 $usbSource = Join-Path $repoRoot 'src\NativeUsb.cs'
 $appSource = Join-Path $repoRoot 'src\Program.cs'
 $testSource = Join-Path $repoRoot 'tests\CoreTests.cs'
+$serviceCore = Join-Path $repoRoot 'src\ServiceCore.cs'
+$spoolerSource = Join-Path $repoRoot 'src\PrintSpooler.cs'
+$serviceUi = Join-Path $repoRoot 'src\ServiceUI.cs'
+$serviceTests = Join-Path $repoRoot 'tests\ServiceTests.cs'
 
 $appArgs = @(
     '/nologo', '/codepage:65001', '/warnaserror', '/target:winexe',
     '/platform:anycpu', '/optimize+', ('/out:' + $appPath),
     '/r:System.Windows.Forms.dll', '/r:System.Drawing.dll',
     '/r:System.Web.Extensions.dll', '/r:System.IO.Compression.dll',
-    '/r:System.IO.Compression.FileSystem.dll', $coreSource, $usbSource, $appSource
+    '/r:System.IO.Compression.FileSystem.dll', $coreSource, $usbSource, $appSource, $serviceCore, $spoolerSource, $serviceUi
 )
 & $compiler @appArgs
 if ($LASTEXITCODE -ne 0) { throw 'Application build failed' }
@@ -23,7 +27,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Application build failed' }
 $testArgs = @(
     '/nologo', '/codepage:65001', '/warnaserror', '/target:exe',
     ('/out:' + $testPath), '/r:System.Drawing.dll', '/r:System.Web.Extensions.dll',
-    $coreSource, $usbSource, $testSource
+    $coreSource, $usbSource, $serviceCore, $spoolerSource, $testSource, $serviceTests
 )
 & $compiler @testArgs
 if ($LASTEXITCODE -ne 0) { throw 'Tests build failed' }

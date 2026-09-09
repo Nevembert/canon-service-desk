@@ -46,7 +46,7 @@ class CoreTests {
                 Check(Json.Decode<System.Collections.Generic.Dictionary<string,object>>(line).ContainsKey("data"),"structured event saved");
                 Check(Json.Decode<Snapshot>(File.ReadAllText(Path.Combine(temp,"report.json"))).Completed,"report checkpoint");
             } finally { Directory.Delete(temp,true); }
-            Console.WriteLine(count+" tests passed.");return 0;
+            Console.WriteLine(count+" core tests passed.");ServiceTests.Run();return 0;
         } catch(Exception e) { Console.Error.WriteLine(e);return 1; }
     }
 }

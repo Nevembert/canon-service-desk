@@ -25,6 +25,21 @@ namespace CanonServiceDesk {
                 try { PrintTest(args[1],j); return 0; }
                 catch(Exception e) { j.Add("ERROR","print.failed",e.ToString()); return 1; }
             }
+            if(args.Length==3 && args[0]=="--service") {
+                var j=new Journal(Path.GetFullPath(args[2]));
+                try {
+                    var request=Json.Decode<ServiceRequest>(File.ReadAllText(args[1]));
+                    if(request.Operation.StartsWith("queue-",StringComparison.Ordinal)) {
+                        var result=PrintSpooler.Run(request,j);
+                        File.WriteAllText(args[1]+".result.json",Json.Encode(result),Encoding.UTF8);
+                    } else NativeUsb.SendBjl(request,j);
+                    return 0;
+                } catch(Exception e) {
+                    var native=e as System.ComponentModel.Win32Exception;
+                    j.Add("ERROR","service.failed",e.ToString(),native==null ? null:new { Win32Error=native.NativeErrorCode,Action=Rules.Win32(native.NativeErrorCode) });
+                    return 1;
+                }
+            }
             bool demo=args.Contains("--demo");
             if(Environment.OSVersion.Platform!=PlatformID.Win32NT && !demo) { Console.Error.WriteLine("Windows required. Use --demo only to preview the UI."); return 2; }
             Application.EnableVisualStyles(); Application.SetCompatibleTextRenderingDefault(false);
@@ -35,6 +50,10 @@ namespace CanonServiceDesk {
                     var t=new Timer { Interval=1200 };
                     t.Tick+=(s,e)=> { t.Stop(); using(var b=new Bitmap(form.Width,form.Height)) { form.DrawToBitmap(b,new Rectangle(0,0,b.Width,b.Height)); b.Save(args[2]); } form.Close(); };
                     t.Start();
+                }
+                if(args.Length==3 && args[0]=="--demo" && args[1]=="--screenshots") {
+                    var t=new Timer { Interval=1200 };
+                    t.Tick+=(s,e)=> { t.Stop();form.CapturePreviews(args[2]);form.Close(); };t.Start();
                 }
                 Application.Run(form); return 0;
             } catch(Exception e) { MessageBox.Show(e.ToString(),"Canon Service Desk: ошибка запуска"); return 1; }
@@ -67,7 +86,7 @@ namespace CanonServiceDesk {
             }
         }
     }
-    public sealed class MainForm : Form {
+    public sealed partial class MainForm : Form {
         readonly bool demo;
         Journal journal;
         Snapshot snapshot;
@@ -80,7 +99,7 @@ namespace CanonServiceDesk {
         readonly Timer logTimer=new Timer();
         public MainForm(bool demo) {
             this.demo=demo; journal=new Journal(Program.NewFolder());
-            Text="Canon Service Desk 0.1 — диагностика и обслуживание"+(demo ? " [ДЕМО]":"");
+            Text="Canon Service Desk "+AppInfo.Version+" — диагностика и обслуживание"+(demo ? " [ДЕМО]":"");
             ClientSize=new Size(1120,790); MinimumSize=new Size(1000,740); StartPosition=FormStartPosition.CenterScreen;
             AutoScaleMode=AutoScaleMode.Dpi; Font=new Font("Segoe UI",10); BackColor=Color.FromArgb(245,247,251);
             Build();
@@ -95,9 +114,9 @@ namespace CanonServiceDesk {
         static void ConfigureArea(TextBox b) { b.Multiline=true;b.ReadOnly=true;b.ScrollBars=ScrollBars.Vertical;b.Dock=DockStyle.Fill;b.BackColor=Color.White;b.BorderStyle=BorderStyle.FixedSingle; }
         void Build() {
             var root=new TableLayoutPanel { Dock=DockStyle.Fill,Padding=new Padding(22),ColumnCount=1,RowCount=5 };
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute,70)); root.RowStyles.Add(new RowStyle(SizeType.Absolute,47));
+            root.RowStyles.Add(new RowStyle(SizeType.AutoSize)); root.RowStyles.Add(new RowStyle(SizeType.Absolute,47));
             root.RowStyles.Add(new RowStyle(SizeType.Absolute,44));root.RowStyles.Add(new RowStyle(SizeType.Percent,100));root.RowStyles.Add(new RowStyle(SizeType.Absolute,34)); Controls.Add(root);
-            var heading=new FlowLayoutPanel { Dock=DockStyle.Fill,FlowDirection=FlowDirection.TopDown,WrapContents=false };
+            var heading=new FlowLayoutPanel { Dock=DockStyle.Fill,AutoSize=true,FlowDirection=FlowDirection.TopDown,WrapContents=false };
             heading.Controls.Add(LabelOf("Canon Service Desk",23,true));
             heading.Controls.Add(LabelOf("USB · драйверы · пробная печать · открытый журнал",10,false)); root.Controls.Add(heading,0,0);
             var bar=new FlowLayoutPanel { Dock=DockStyle.Fill,WrapContents=false };
@@ -117,25 +136,7 @@ namespace CanonServiceDesk {
             notePanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,155));notePanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));
             notePanel.Controls.Add(new Label { Text="Ваше наблюдение:",Dock=DockStyle.Fill,TextAlign=ContentAlignment.MiddleLeft },0,0);
             note.Multiline=true;note.Dock=DockStyle.Fill;note.Text="";notePanel.Controls.Add(note,1,0);overviewLayout.Controls.Add(notePanel,0,2);
-            var service=new TabPage("Обслуживание") { Padding=new Padding(18) };tabs.TabPages.Add(service);
-            var services=new FlowLayoutPanel { Dock=DockStyle.Fill,FlowDirection=FlowDirection.TopDown,WrapContents=false,AutoScroll=true };service.Controls.Add(services);
-            services.Controls.Add(LabelOf("Обычная печать и обслуживание через драйвер",15,true));
-            services.Controls.Add(new Label { Text="Выберите установленную очередь Canon. Эти действия предназначены для обычного режима.",AutoSize=true,Margin=new Padding(0,0,0,12) });
-            queues.DropDownStyle=ComboBoxStyle.DropDownList;queues.Width=760;queues.Margin=new Padding(0,0,0,14);services.Controls.Add(queues);
-            var serviceButtons=new FlowLayoutPanel { Width=900,Height=52 };
-            print.Text="Пробная страница";print.AutoSize=true;print.Height=36;print.Click+=(s,e)=>TestPrint();serviceButtons.Controls.Add(print);
-            preferences.Text="Открыть обслуживание драйвера";preferences.AutoSize=true;preferences.Height=36;preferences.Click+=(s,e)=>OpenPreferences();serviceButtons.Controls.Add(preferences);services.Controls.Add(serviceButtons);
-            var help=new Label { Text="В окне драйвера Canon откройте вкладку «Обслуживание» для проверки дюз и очистки.\r\nПри P07/5B00 принтер может блокировать эти действия до сброса счётчика.",Width=920,Height=64,Margin=new Padding(0,0,0,16) };services.Controls.Add(help);
-            services.Controls.Add(LabelOf("G2411: сброс кнопками на принтере",14,true));
-            services.Controls.Add(new Label { Text="После обслуживания абсорбера и входа в сервисный режим:\r\n1. Нажмите «Отмена» 5 раз.   2. Нажмите «Включение» 1 раз.\r\nПользователь сообщил, что это убрало ошибку на его G2411. Для других моделей не проверено.",Width=920,Height=85 });
-            services.Controls.Add(new Label { Text="Кнопки нажимаются на самом принтере. Сброс счётчика по USB в версии 0.1 не реализован.\r\nПосле завершения операции проверьте состояние в обычном режиме и пробную печать.",Width=920,Height=60 });
-            services.Controls.Add(ButtonOf("Записать: ошибка исчезла",(s,e)=> {
-                if(busy || demo) return;
-                note.Text="Пользователь сообщает: ошибка исчезла после 5 нажатий «Отмена» и 1 нажатия «Включение» в сервисном режиме.";
-                journal.Add("INFO","operator.manual_reset",note.Text,new { Source="user_report",AutomaticallyVerified=false });
-                status.Text="Ваш результат записан в журнал. Автоматическая проверка сброса не выполнялась.";
-            }));
-            services.Controls.Add(ButtonOf("Официальный драйвер G2411",(s,e)=>OpenPath("https://www.canon.co.uk/support/consumer/products/printers/pixma/g-series/pixma-g2411.html")));
+            BuildServiceTabs(tabs);
             var codes=new TabPage("Коды ошибок") { Padding=new Padding(18) };tabs.TabPages.Add(codes);
             var codeLayout=new FlowLayoutPanel { Dock=DockStyle.Fill,FlowDirection=FlowDirection.TopDown,WrapContents=false };
             codeLayout.Controls.Add(LabelOf("Код Service Tool и код Windows — разные системы",15,true));
@@ -152,13 +153,14 @@ namespace CanonServiceDesk {
         void UpdateState() {
             scan.Enabled=!busy;export.Enabled=!busy;queues.Enabled=!busy;
             print.Enabled=!busy && !demo && queues.Items.Count>0;preferences.Enabled=print.Enabled;
+            UpdateServiceState();
             location.Text="Логи сохраняются локально · автоматической отправки нет · "+Path.GetFileName(journal.Folder);
         }
         async void Scan() {
             if(busy || demo) { if(demo) LoadDemo(); return; }
-            busy=true;journal=new Journal(Program.NewFolder());snapshot=null;devices.Items.Clear();findings.Clear();raw.Clear();events.Clear();UpdateState();
+            busy=true;journal=new Journal(Program.NewFolder());snapshot=null;devices.Items.Clear();findings.Clear();raw.Clear();events.Clear();jobs.Items.Clear();queueReport=null;jobQueues.Items.Clear();bjlDevices.Items.Clear();UpdateState();
             status.Text="Проверяю Canon… До 30 секунд. Другие программы принтера лучше закрыть.";
-            journal.Add("INFO","app.scan","Начало проверки",new { Version="0.1.0",Architecture=IntPtr.Size*8,Observation=note.Text });
+            journal.Add("INFO","app.scan","Начало проверки",new { Version=AppInfo.Version,Architecture=IntPtr.Size*8,Observation=note.Text });
             try {
                 int exit=await RunWorker("--scan "+WindowsArgs.Quote(journal.Folder),30000);
                 string path=Path.Combine(journal.Folder,"report.json");
@@ -192,7 +194,7 @@ namespace CanonServiceDesk {
             var b=new StringBuilder();foreach(var u in snapshot.Usb) {
                 b.AppendLine(u.Name).AppendLine("PnP: "+u.InstanceId).AppendLine("Путь: "+u.Path).AppendLine("Модель: "+u.Model).AppendLine("IEEE 1284: "+u.DeviceId).AppendLine("HEX: "+u.RawHex).AppendLine("Чтение: "+u.ReadOk+"; Win32: "+u.Win32Error+"; этап: "+u.ErrorStage).AppendLine();
             }
-            raw.Text=b.ToString();UpdateState();
+            raw.Text=b.ToString();RefreshServiceDevices();UpdateState();
         }
         void ReadJournal() {
             string p=Path.Combine(journal.Folder,"journal.txt");if(!File.Exists(p)) return;
@@ -210,7 +212,8 @@ namespace CanonServiceDesk {
                     string dest=Path.GetFullPath(dlg.FileName);
                     if(dest.StartsWith(Path.GetFullPath(journal.Folder)+Path.DirectorySeparatorChar,StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException("Сохраните ZIP вне папки текущего журнала.");
                     File.WriteAllText(Path.Combine(journal.Folder,"observation.txt"),note.Text,Encoding.UTF8);
-                    File.WriteAllText(Path.Combine(journal.Folder,"summary.txt"),"Canon Service Desk 0.1.0\r\n"+findings.Text+"\r\n\r\nОтчёт может содержать серийный номер принтера и пути USB. Никакие данные автоматически не публикуются.",Encoding.UTF8);
+                    File.WriteAllText(Path.Combine(journal.Folder,"summary.txt"),"Canon Service Desk "+AppInfo.Version+"\r\n"+findings.Text+"\r\n\r\nОтчёт может содержать серийный номер принтера и пути USB. Никакие данные автоматически не публикуются.",Encoding.UTF8);
+                    File.WriteAllText(Path.Combine(journal.Folder,"service-history.json"),Json.Encode(Entries()),Encoding.UTF8);
                     string temp=dest+".tmp-"+Guid.NewGuid().ToString("N");
                     try { ZipFile.CreateFromDirectory(journal.Folder,temp,CompressionLevel.Optimal,false);if(File.Exists(dest)) File.Delete(dest);File.Move(temp,dest); }
                     finally { if(File.Exists(temp)) File.Delete(temp); }
