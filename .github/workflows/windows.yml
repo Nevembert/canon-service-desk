@@ -32,6 +32,17 @@ jobs:
           $app = Start-Process -FilePath '.\CanonServiceDesk.exe' -ArgumentList @('--demo', '--screenshot', ('"' + $preview + '"')) -PassThru
           if (-not $app.WaitForExit(20000)) { $app.Kill(); throw 'Demo UI timed out' }
           if ($app.ExitCode -ne 0 -or -not (Test-Path $preview)) { throw 'Demo UI did not produce a preview' }
+      - name: Verify the published Windows download
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Expand-Archive -LiteralPath '.\downloads\CanonServiceDesk-v0.1.0-Windows.zip' -DestinationPath '.\download-check'
+          $exe = Get-ChildItem '.\download-check' -Recurse -Filter 'CanonServiceDesk.exe' | Select-Object -First 1
+          if (-not $exe) { throw 'Download does not contain the application' }
+          $preview = Join-Path $pwd 'download-demo.png'
+          $app = Start-Process -FilePath $exe.FullName -ArgumentList @('--demo', '--screenshot', ('"' + $preview + '"')) -PassThru
+          if (-not $app.WaitForExit(20000)) { $app.Kill(); throw 'Published application timed out' }
+          if ($app.ExitCode -ne 0 -or -not (Test-Path $preview)) { throw 'Published application did not produce a preview' }
       - name: Save build and demo preview
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
@@ -40,4 +51,5 @@ jobs:
             CanonServiceDesk.exe
             CanonServiceDesk.exe.config
             ui-demo.png
+            download-demo.png
           if-no-files-found: error
