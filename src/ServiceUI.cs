@@ -47,7 +47,8 @@ namespace CanonServiceDesk {
                 var p=procedures.SelectedItem as ServiceProcedure;
                 if(p==null) return;
                 procedureText.Text=p.Title+"\r\n"+p.Method+"\r\n\r\n"+p.Description+"\r\n\r\n"+string.Join("\r\n\r\n",p.Steps.Select((t,i)=>(i+1)+". "+t));
-                wizardButton.Enabled=!busy;
+                wizardButton.Enabled=!busy && p.Id!="page-reset";
+                wizardButton.Text=p.Id=="page-reset" ? "USB-сброс недоступен":"Пошаговый мастер";
             };
             procedures.SelectedIndex=0;
             BuildCountersTab(tabs);BuildQueueTab(tabs);BuildBjlTab(tabs);
@@ -93,7 +94,7 @@ namespace CanonServiceDesk {
         }
         void UpdateServiceState() {
             foreach(var c in serviceActions) c.Enabled=!busy && !demo;
-            wizardButton.Enabled=!busy;procedures.Enabled=!busy;deviceKey.Enabled=!busy;counterInput.Enabled=!busy;
+            wizardButton.Enabled=!busy && procedures.SelectedItem!=null && ((ServiceProcedure)procedures.SelectedItem).Id!="page-reset";procedures.Enabled=!busy;deviceKey.Enabled=!busy;counterInput.Enabled=!busy;
             jobQueues.Enabled=!busy;
             queueRefresh.Enabled=!busy && !demo && jobQueues.SelectedItem!=null;
             bool canEdit=!busy && !demo && queueReport!=null && queueReport.Printer==(jobQueues.SelectedItem as string) && jobs.SelectedItems.Count==1;
@@ -117,7 +118,7 @@ namespace CanonServiceDesk {
             public override string ToString() { return Device.Model+" — "+Device.InstanceId; }
         }
         void StartProcedure() {
-            if(busy) return;var p=procedures.SelectedItem as ServiceProcedure;if(p==null) return;
+            if(busy) return;var p=procedures.SelectedItem as ServiceProcedure;if(p==null || p.Id=="page-reset") return;
             if(!demo && string.IsNullOrWhiteSpace(deviceKey.Text)) { MessageBox.Show(this,"Сначала укажите устройство на вкладке «Счётчики», чтобы сохранить результат процедуры.");return; }
             using(var wizard=new ProcedureForm(p,demo)) {
                 wizard.ShowDialog(this);

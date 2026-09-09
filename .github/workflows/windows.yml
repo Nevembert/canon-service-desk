@@ -24,9 +24,6 @@ jobs:
         run: python -m unittest discover -s tests -p "test_*.py" -v
       - name: Observer tests
         run: node tests/test_observer.js
-      - name: Real Windows spooler on an isolated test queue
-        shell: powershell
-        run: ./.github/scripts/queue-integration.ps1
       - name: Preview with demo data only
         shell: powershell
         run: |
@@ -49,7 +46,11 @@ jobs:
           $app = Start-Process -FilePath $exe.FullName -ArgumentList @('--demo', '--screenshots', ('"' + $preview + '"')) -PassThru
           if (-not $app.WaitForExit(20000)) { $app.Kill(); throw 'Published application timed out' }
           if ($app.ExitCode -ne 0 -or (Get-ChildItem $preview -Filter '*.png').Count -ne 9) { throw 'Packaged application did not produce all previews' }
+      - name: Real Windows spooler on an isolated test queue
+        shell: powershell
+        run: ./.github/scripts/queue-integration.ps1
       - name: Save build and demo preview
+        if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: CanonServiceDesk-windows-build

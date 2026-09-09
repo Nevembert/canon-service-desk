@@ -18,7 +18,8 @@ class QueueIntegration {
     [DllImport("winspool.drv",SetLastError=true)] static extern bool EndDocPrinter(IntPtr printer);
     [DllImport("winspool.drv",SetLastError=true)] static extern bool StartPagePrinter(IntPtr printer);
     [DllImport("winspool.drv",SetLastError=true)] static extern bool EndPagePrinter(IntPtr printer);
-    [DllImport("winspool.drv",CharSet=CharSet.Unicode,SetLastError=true)] static extern bool GetPrinterW(IntPtr printer,uint level,out uint status,uint size,out uint needed);
+    [DllImport("winspool.drv",CharSet=CharSet.Unicode,SetLastError=true)] static extern bool GetPrinterW(IntPtr printer,uint level,IntPtr data,uint size,out uint needed);
+    [DllImport("winspool.drv",CharSet=CharSet.Unicode,SetLastError=true)] static extern bool SetJobW(IntPtr printer,uint id,uint level,IntPtr data,uint command);
     static void Check(bool value,string name) { if(!value) throw new Exception(name+"; Win32="+Marshal.GetLastWin32Error());Console.WriteLine("PASS native: "+name); }
     static int Main(string[] args) {
         try {
@@ -26,14 +27,18 @@ class QueueIntegration {
             Check(OpenPrinterW(Printer,out handle,ref defaults),"open isolated queue");
             try {
                 Check(SetPrinterW(handle,0,IntPtr.Zero,1),"pause isolated queue before adding data");
-                uint state,needed;Check(GetPrinterW(handle,6,out state,4,out needed),"read queue state");
-                Console.WriteLine("Queue status flags="+state);Check((state & 1)!=0,"queue is actually paused");
+                uint needed;GetPrinterW(handle,6,IntPtr.Zero,0,out needed);
+                Check(needed>=4 && needed<65536,"bounded queue state size");
+                IntPtr statusBuffer=Marshal.AllocHGlobal((int)needed);
+                try { Check(GetPrinterW(handle,6,statusBuffer,needed,out needed),"read queue state");uint state=(uint)Marshal.ReadInt32(statusBuffer);Console.WriteLine("Queue status flags="+state);Check((state & 1)!=0,"queue is actually paused"); }
+                finally { Marshal.FreeHGlobal(statusBuffer); }
                 var doc=new Doc { Name="Проверка UTF-8 — CI only",Datatype="RAW" };
                 uint id=StartDocPrinterW(handle,1,ref doc);Check(id!=0,"create temporary spool job");
                 Check(StartPagePrinter(handle),"start temporary page");
                 byte[] bytes=Encoding.ASCII.GetBytes("CI TEST - NEVER SENT TO HARDWARE\r\n\f");uint written;
                 Check(WritePrinter(handle,bytes,(uint)bytes.Length,out written) && written==bytes.Length,"spool bytes to paused queue");
                 Check(EndPagePrinter(handle),"end temporary page");
+                Check(SetJobW(handle,id,0,IntPtr.Zero,1),"hold temporary job before ending document");
                 Check(EndDocPrinter(handle),"finish spooling");
                 var request=new ServiceRequest { Printer=Printer,Operation="queue-list" };
                 var list=PrintSpooler.Run(request,log);
