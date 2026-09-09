@@ -1,0 +1,16 @@
+*.exe
+*.pdb
+*.mdb
+__pycache__/
+*.pyc
+.venv/
+bin/
+obj/
+dist/
+*.jsonl
+Logs/
+Traces/
+report.json
+observation.txt
+journal.txt
+ui-demo.png

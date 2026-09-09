@@ -1,0 +1,43 @@
+name: Windows build and test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Build and test C#
+        shell: powershell
+        run: ./.github/scripts/build-test.ps1
+      - name: Python analyzer tests
+        run: python -m unittest discover -s tests -p "test_*.py" -v
+      - name: Observer tests
+        run: node tests/test_observer.js
+      - name: Preview with demo data only
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $preview = Join-Path $pwd 'ui-demo.png'
+          $app = Start-Process -FilePath '.\CanonServiceDesk.exe' -ArgumentList @('--demo', '--screenshot', ('"' + $preview + '"')) -PassThru
+          if (-not $app.WaitForExit(20000)) { $app.Kill(); throw 'Demo UI timed out' }
+          if ($app.ExitCode -ne 0 -or -not (Test-Path $preview)) { throw 'Demo UI did not produce a preview' }
+      - name: Save build and demo preview
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: CanonServiceDesk-windows-build
+          path: |
+            CanonServiceDesk.exe
+            CanonServiceDesk.exe.config
+            ui-demo.png
+          if-no-files-found: error
