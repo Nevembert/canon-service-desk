@@ -16,6 +16,8 @@ class QueueIntegration {
     [DllImport("winspool.drv",CharSet=CharSet.Unicode,SetLastError=true)] static extern uint StartDocPrinterW(IntPtr printer,uint level,ref Doc doc);
     [DllImport("winspool.drv",SetLastError=true)] static extern bool WritePrinter(IntPtr printer,byte[] data,uint size,out uint written);
     [DllImport("winspool.drv",SetLastError=true)] static extern bool EndDocPrinter(IntPtr printer);
+    [DllImport("winspool.drv",SetLastError=true)] static extern bool StartPagePrinter(IntPtr printer);
+    [DllImport("winspool.drv",SetLastError=true)] static extern bool EndPagePrinter(IntPtr printer);
     static void Check(bool value,string name) { if(!value) throw new Exception(name+"; Win32="+Marshal.GetLastWin32Error());Console.WriteLine("PASS native: "+name); }
     static int Main(string[] args) {
         try {
@@ -25,11 +27,16 @@ class QueueIntegration {
                 Check(SetPrinterW(handle,0,IntPtr.Zero,1),"pause isolated queue before adding data");
                 var doc=new Doc { Name="Проверка UTF-8 — CI only",Datatype="RAW" };
                 uint id=StartDocPrinterW(handle,1,ref doc);Check(id!=0,"create temporary spool job");
-                byte[] bytes=Encoding.ASCII.GetBytes("CI TEST - NEVER SENT TO HARDWARE\r\n");uint written;
+                Check(StartPagePrinter(handle),"start temporary page");
+                byte[] bytes=Encoding.ASCII.GetBytes("CI TEST - NEVER SENT TO HARDWARE\r\n\f");uint written;
                 Check(WritePrinter(handle,bytes,(uint)bytes.Length,out written) && written==bytes.Length,"spool bytes to paused queue");
+                Check(EndPagePrinter(handle),"end temporary page");
                 Check(EndDocPrinter(handle),"finish spooling");
                 var request=new ServiceRequest { Printer=Printer,Operation="queue-list" };
-                var list=PrintSpooler.Run(request,log);var job=list.Jobs.Single(j=>j.Id==id);
+                var list=PrintSpooler.Run(request,log);
+                for(int i=0;i<50 && !list.Jobs.Any(j=>j.Id==id);i++) { Thread.Sleep(100);list=PrintSpooler.Run(request,log); }
+                Console.WriteLine("Expected job="+id+"; enumerated="+Json.Encode(list));
+                var job=list.Jobs.Single(j=>j.Id==id);
                 Check(job.Document==doc.Name,"read real JOB_INFO_1 Unicode fields");
                 request.Job=job;request.Operation="queue-pause";list=PrintSpooler.Run(request,log);
                 Check((list.Jobs.Single(j=>j.Id==id).Status & 1)!=0,"pause selected real job");
