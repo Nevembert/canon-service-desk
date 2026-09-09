@@ -23,6 +23,7 @@ namespace CanonServiceDesk {
 
         static TableLayoutPanel Grid(int rows) {
             var p=new TableLayoutPanel { Dock=DockStyle.Fill,ColumnCount=1,RowCount=rows };
+            p.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));
             return p;
         }
         static FlowLayoutPanel Buttons() { return new FlowLayoutPanel { Dock=DockStyle.Fill,AutoSize=true,WrapContents=true,Margin=new Padding(0,5,0,5) }; }
